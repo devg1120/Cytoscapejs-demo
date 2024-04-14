@@ -1,0 +1,1475 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>wikidata viewer</title>
+
+  <link rel="stylesheet" type="text/css"
+    href="https://cdnjs.cloudflare.com/ajax/libs/cytoscape-panzoom/2.5.3/cytoscape.js-panzoom.css">
+  <link rel="stylesheet" type="text/css"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.9.0/css/all.min.css">
+
+  <link rel="stylesheet" type="text/css"
+    href="https://cdn.jsdelivr.net/npm/cytoscape-context-menus@3.0.7/cytoscape-context-menus.css">
+
+  <script src="https://unpkg.com/jquery@3.4.1/dist/jquery.min.js"></script>
+  <script src="https://unpkg.com/cytoscape@3.8.1/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/numeric@1.2.6/numeric-1.2.6.js"></script>
+  <script src="https://unpkg.com/layout-base@1.0.1/layout-base.js"></script>
+  <script src="https://unpkg.com/cose-base@1.0.0/cose-base.js"></script>
+
+  <!--cytoscape-fcose:Dependencies
+    Cytoscape.js ^3.2.0
+    numeric.js ^1.2.6
+    cose-base ^1.0.0
+  -->
+  <script src="https://unpkg.com/cytoscape-fcose@1.0.0/cytoscape-fcose.js"></script>
+
+  <!-- cytoscape-panzoom:Dependencies
+    jQuery ^1.4 || ^2.0 || ^3.0
+    Cytoscape.js ^2.0.0 || ^3.0.0
+    Font Awesome 4 (for automatic icons), or you can specify your own class names for icons
+  -->
+
+  <!-- cytoscape-context-menus
+ 		Cytoscape.js ^2.7.0 || ^3.0.0
+		jQuery ^1.7.0 || ^2.0.0 || ^3.0.0
+   -->
+
+  <script src="https://unpkg.com/cytoscape-panzoom@2.5.3/cytoscape-panzoom.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cytoscape-context-menus@3.0.7/cytoscape-context-menus.min.js"> </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.19.2/axios.min.js"></script>
+
+  <style>
+    body {
+      font-family: helvetica neue, helvetica, liberation sans, arial, sans-serif;
+      font-size: 10px;
+    }
+
+    #IdCytoscape {
+      position: absolute;
+      top: 150px;
+      left: 0px;
+      width: 100%;
+      height: 100%;
+      z-index: 999;
+      background-color: #e9e9e9;
+    }
+  </style>
+  <script>
+    var global_ncount = 1;
+    var global_ecount = 1;
+
+    var CytLayout = (function () {
+      var _setLayout = function (cy, layoutName) {
+
+        //var padding =       Number( document.getElementById("Id_padding") ) ;
+        //var spacingFactor = Number( document.getElementById("Id_spacingFactor") ) ;
+        var padding =       ( document.getElementById("Id_padding").value ) * 1 ;
+        var spacingFactor = ( document.getElementById("Id_spacingFactor").value ) * 1 ;
+        if ( spacingFactor == 0){
+            spacingFactor = undefined;
+        }
+        console.log("padding=", padding);
+        console.log("spacingFactor=", spacingFactor);
+
+
+        var layout = {
+          name: layoutName,
+          fit: true,
+          animate: true,
+          avoidOverlap: true, 
+          'padding': padding, 
+          'spacingFactor': spacingFactor, 
+
+        };
+
+        // cy.layout(layout).run();
+        var layout_nodes =  cy.nodes().filter( function(ele){ 
+               if( ele.selected() ){ return true;} else{ return false; }} );
+        if( layout_nodes.length <= 1 ) {
+            // 全ノードをレイアウト
+            cy.layout(layout).run();
+        } else {
+            // 選択されたノードだけレイアウト
+            layout_nodes.layout(layout).run();
+        } 
+
+
+        
+        return layout;
+      };
+      return {
+        setLeyout: _setLayout
+      };
+    })();
+    document.addEventListener("DOMContentLoaded", function () {
+      var setStyles = function (nodes, edges) {
+        // ノードのスタイル
+        nodes.forEach(function (node) {
+          // console.log( "node=", node);
+          // console.log( "node.selected=", node.selected() );
+          var data = node.json().data;
+          var node_class = node.json().classes; 
+          console.log( "node_class=", node_class );
+          if (!data.type) {
+            // 子ノードのサイズとスタイル
+            /*
+                        // ノードのサイズをランダムで求めていますが、普通はノードの属性から値を取ると思います。
+                        var width = [30, 70, 110];
+                        var size = width[Math.floor(Math.random() * 3)];
+                        node.css("width", size);
+                        node.css("height", size);
+            */
+            // ラベルの幅と高さのサイズにします。
+            node.css("width", "label");
+            node.css("height", "label");
+            node.css("padding", "20px");
+            node.css("content", data.name || data.id);
+            node.css("text-justification", "left")
+            node.css("text-valign", "center");
+            node.css("text-halign", "center");
+            node.css("text-wrap", "wrap");
+            // node.css("shape", "round-rectangle");
+
+            if ( node_class == "node_class_dbpedia" ){
+                // node.css("background-color", "#d0d0d0");
+                node.css("shape", "round-rectangle");
+  
+            } else if ( node_class == "node_class_wikipedia" ){
+                //node.css("background-color", "#ffcb4f");    // 黄色
+                node.css("shape", "rectangle");
+  
+            } else { // node_clas_string
+                //node.css("background-color", "#ff4fcb");    
+                node.css("shape", "ellipse");
+            }
+
+
+//            if( node.selected() ){
+//            } else {
+//                node.css("background-color", "#ffcb4f");    // 黄色
+//            }     
+            // node.css("background-color", "#ffcb4f");
+            // node.css(".classes", "test");	// ●
+          } else if ((data.type).match(/^g/)) {
+            // 親ノードのスタイル
+            var colors = ["#B2EDCE", "#4eb7d9", "#ffdaf4"];
+            node.css("content", data.name);
+            node.css("text-valign", "top");
+            node.css("background-color", colors[Math.floor(Math.random() * 3)]);
+          }
+//          if( node.selected() ){
+//                node.css( 'background-color', 'SteelBlue');
+//          } 
+
+        });
+        // エッヂのスタイル
+        edges.forEach(function (edge) {
+          var data = edge.json().data;
+          edge.css("content", data.name || data.id);
+
+          // edge.css("curve-style", "taxi");
+          edge.css("curve-style", "bezier");
+
+          edge.css("mid-arrow-shape", "triangle");
+          //edge.css("target-arrow-shape", "triangle");
+        });
+      };
+
+      // 初期データ
+
+        var initial_graph = 
+            // "[ { group: 'nodes', data: {    id: 'n1', name: 'デンプン', url: 'http://ja.dbpedia.org/resource/デンプン' }, classes:'test' }, ]";
+            "[ { group: 'nodes', data: {    id: 'n1', name: 'デンプン', url: 'http://ja.dbpedia.org/resource/デンプン' }, classes:'node_class_dbpedia' }, ]";
+
+      var cy = cytoscape({
+          container: $("#IdCytoscape"),
+          ready: function () {
+            setStyles(this.nodes(), this.edges());
+          },
+          // elements: eval($("#IdElements").val()),
+          elements: eval( initial_graph ), 
+
+          style: [
+              {
+                selector: 'edge',
+                style: {
+                  "mid-arrow-shape"   : "triangle", 
+                  "target-arrow-shape": "triangle"
+                }
+              }
+          ]
+
+
+      });
+
+      // this.cy = cy;
+
+      // パン、ズームイン／ズームアウトコントロールの配置
+      cy.panzoom({});
+      // context menu 
+
+var options = {
+    // List of initial menu items
+    menuItems: [
+
+    //詳細
+      {
+        id: 'detail', // ID of menu item
+        content: 'detail', // Display content of menu item
+        tooltipText: 'detail', // Tooltip text for menu item
+        selector: 'node', 
+        onClickFunction: function (event) { // The function to be executed on click
+          console.log('detail element');
+            var target = event.target || event.cyTarget;
+            // var s = JSON.stringify(target.json());
+            var target_data = target.data();
+            var s = JSON.stringify(target_data, null, 4);
+            $("#IdDetail").val(s);
+
+        },
+        disabled: false, // Whether the item will be created as disabled
+        // show: false, // Whether the item will be shown or not
+        hasTrailingDivider: false, // Whether the item will have a trailing divider
+        coreAsWell: false // Whether core instance have this item on cxttap
+      },
+
+    // show wikidata URL
+      {
+        id: 'openURL', // ID of menu item
+        content: 'open URL', // Display content of menu item
+        tooltipText: 'open URL', // Tooltip text for menu item
+        selector: 'node', 
+        onClickFunction: function (event) { // The function to be executed on click
+          console.log('open URL');
+
+            var target = event.target || event.cyTarget;
+            console.log(target) ;
+            console.log(target.id() ) ;
+            console.log(target.data()  ) ;
+
+            var url = target.data().url;
+            console.log( "url=", url ) ; 
+            if( typeof url == "string"){
+            } else {
+              url = url.value;
+            }
+            window.open(url, '_blank');
+
+        },
+        disabled: false, // Whether the item will be created as disabled
+        // show: false, // Whether the item will be shown or not
+        //hasTrailingDivider: true, // Whether the item will have a trailing divider
+        hasTrailingDivider: false, // Whether the item will have a trailing divider
+        coreAsWell: false // Whether core instance have this item on cxttap
+      },
+
+
+    // show wikipedia 
+      {
+        id: 'openWikipedia', // ID of menu item
+        content: 'open Wikkpedia', // Display content of menu item
+        tooltipText: 'open Wikipedia', // Tooltip text for menu item
+        selector: 'node', 
+        onClickFunction: function (event) { // The function to be executed on click
+          console.log('open Wikipedia');
+
+            var target = event.target || event.cyTarget;
+            console.log(target) ;
+            //console.log(target.id() ) ;
+            //console.log(target.data()  ) ;
+
+
+
+
+
+            var nodes =  cy.nodes().filter( function(ele){ 
+               if( ele.selected() ){ return true;} else{ return false; }} );
+
+            if (nodes.length == 2 ){
+                // node_a == target node の wikipedia 記事の中の node_b の単語の出現位置を表示する。
+                // 互いの単語の出現位置にスクロールする。
+                var node_a = nodes[0];
+                var node_b = nodes[1];
+
+                if( node_a == target ){
+                } else {
+                    node_a = nodes[1];
+                    node_b = nodes[0];
+
+                } 
+                var url_a =  node_a.data().url  ;
+                var url_b =  node_b.data().url  ;
+                var word_a = (url_a.match( "/([^/]+)$"))[1]; 
+                var word_b = (url_b.match( "/([^/]+)$"))[1]; 
+
+                var url1 = "https://ja.wikipedia.org/wiki/" + word_a + "#:~:text=" + word_b; 
+                // var url2 = "https://ja.wikipedia.org/wiki/" + word_b + "#:~:text=" + word_a; 
+
+                // console.log("open url_a");
+                let a= document.createElement('a');
+                a.id= 'url1';
+                a.href= url1; 
+                a.style.display='none'; 
+                document.body.appendChild(a);
+
+
+            } else {
+
+                console.log("open single window");
+
+                var url = target.data().url;
+                console.log( "url=", url ) ; 
+                if ( typeof url == "string" ){
+                } else {
+                  url = url.value;
+                }
+                // value: "http://cy.dbpedia.org/resource/Pectin" なら Pectin だけ取る
+                var word = "";
+                var tmp = url.match( "/([^/]+)$"); 
+                if( tmp ) {
+                    word = tmp[1];
+                }
+
+                var url2 = "https://ja.wikipedia.org/wiki/" + word; 
+                console.log( "url2=", url2 ) ; 
+                window.open(url2, '_blank');
+            }
+        },
+        disabled: false, // Whether the item will be created as disabled
+        // show: false, // Whether the item will be shown or not
+        //hasTrailingDivider: true, // Whether the item will have a trailing divider
+        hasTrailingDivider: false, // Whether the item will have a trailing divider
+        coreAsWell: false // Whether core instance have this item on cxttap
+      },
+
+
+
+    // show URL
+      {
+        id: 'select_adj_nodes', // ID of menu item
+        content: 'select_adj_nodes', // Display content of menu item
+        tooltipText: 'select adj. nodes', // Tooltip text for menu item
+        selector: 'node', 
+        onClickFunction: function (event) { // The function to be executed on click
+          console.log('open URL');
+
+            var target = event.target || event.cyTarget;
+            console.log(target) ;
+            console.log(target.id() ) ;
+            console.log(target.data()  ) ;
+        
+            target.neighborhood().select()
+            // CytLayout.setLeyout(cy, $("#IdLayout").val());
+
+        },
+        disabled: false, // Whether the item will be created as disabled
+        // show: false, // Whether the item will be shown or not
+        hasTrailingDivider: true, // Whether the item will have a trailing divider
+        coreAsWell: false // Whether core instance have this item on cxttap
+      },
+
+    // 削除
+      {
+        id: 'remove', // ID of menu item
+        content: 'remove', // Display content of menu item
+        tooltipText: 'remove', // Tooltip text for menu item
+        selector: 'node', 
+        onClickFunction: function (event) { // The function to be executed on click
+            console.log('remove element');
+            var target = event.target || event.cyTarget;
+            // cy.remove( target ); 
+
+            // 選択されているノードを全部削除する。
+            var nodes =  cy.nodes().filter( function(ele){ 
+                if( ele.selected() ){ return true;} else{ return false; }} );
+
+            cy.remove( nodes );
+
+        },
+        disabled: false, // Whether the item will be created as disabled
+        // show: false, // Whether the item will be shown or not
+        hasTrailingDivider: false, // Whether the item will have a trailing divider
+        coreAsWell: false // Whether core instance have this item on cxttap
+      },
+
+
+    //wikidata で関連ノードを検索・追加
+      {
+        id: 'onto_expand',
+        content: 'onto expand',
+        tooltipText: 'onto expand',
+        selector: 'node',
+        onClickFunction: function (event) {
+            console.log('onto_expand element');
+            var target = event.target || event.cyTarget;
+            console.log(target) ;
+            console.log(target.id() ) ;
+            console.log(target.data()  ) ;
+
+            var source_id = target.data().id;
+            console.log( "source_id=", source_id );
+
+
+            // console.log( cy.nodes() ) ;
+            // var ncount = cy.nodes().length ;
+            var ncount = global_ncount;
+            //console.log("ncount:", ncount); 
+
+            // console.log( cy.edges() ) ;
+            // var ecount = cy.edges().length ;
+            var ecount = global_ecount;
+            //console.log("ecount:", ecount);
+
+
+            var data = target.data();
+            // ***/resource/*** → ***/page/***
+            var name = data.name;
+            //var query = "http://www7353uo.sakura.ne.jp:8084/dbpedia?word=" + name; 
+
+            var url = "http://ja.dbpedia.org/resource/" + data.name;
+            var query =  "http://ja.dbpedia.org/sparql?format=json&query=" + 
+              "select distinct * where { <" + url + "> ?p ?o .  } LIMIT 300 ";
+
+            console.log("query=", query);
+            axios.get(query)
+              .then(response => {
+                 //var items =  response.data; 
+                 var items =  response.data.results.bindings; 
+                 console.log(JSON.stringify(response.data));
+                 var new_nodes = [];
+                 var new_edges = []; 
+
+
+                 var rev_subject_link =  items.filter( function(item){ 
+                    if( "rev" in item && item.rev.includes("subject") ){ return true;} else{ return false; }} );
+                 if(  rev_subject_link.length > 0 ){
+                    // rev:subject のノードがある
+                    // subject ノードをレイアウトするエリアの作成
+                    ncount += 1;
+                    var parent_id  = 'n' + ncount.toString(); 
+                    var parent_type  = 'g' + ncount.toString(); 
+                     new_nodes.push(
+                                { group: 'nodes', data: { id    : parent_id, 
+                                                          type  : parent_type,
+                                                          'name': data.name + "のサブジェクト", 
+                                                           url  : ""
+                                                        },
+                                              // classes:'test'   
+                                              classes:node_class  
+                                    }
+
+                                );
+                      ecount += 1;
+                      new_edges.push(
+                        { group: 'edges', data: { id   : 'e' + ecount.toString(), 
+                                                 'name': data.name + "のサブジェクト", 
+                                                  source: source_id, 
+                                                  target: parent_id 
+                                                },
+                                      classes:'test'   }
+                        );
+                 }
+                
+
+                 for( item of items){
+                    console.log("checking item:", item); 
+                    if( typeof item.p == "string"){ 
+                      item.p.value = item.p ; 
+                    }
+
+                    // lengthy prefix を削除 
+                    item.p.value = item.p.value.replace("dbpedia-owl:", "");
+                    item.p.value = item.p.value.replace("dcterms:", "");
+
+                    var link_name = item.p
+                    var tmp = item.p.value.match( "/([^/]+)$");    
+                    if( tmp ) {
+                        link_name = tmp[1];
+                    }
+
+ 
+                    // 多言語表記は除外(  href://**.dbpedia.org/resource/***"  で ** が "ja" でない。
+                    if(       item.o.value.includes(    "dbpedia.org")  ){ 
+                        if(   item.o.value.includes( "ja.dbpedia.org") ){
+                        } else {
+                            console.log("skip non-japanese", item);
+                            continue;
+                        } 
+                    } 
+                             
+
+                    // 数字ノードを除外
+                    if(  item.o.value.match(/^[\d\.]+$/)  ){ 
+                        console.log("skip number", item);
+                        continue;
+                    } 
+
+                    // oldid を除外
+                    if(  item.o.value.includes("oldid=") ) { 
+                        console.log("skip oldid", item);
+                        continue;
+                    } 
+
+                    // 画像 を除外
+                    if(  item.o.value.match(/\.(svg|jpg|png)$/i ) ){ 
+                        console.log("skip", item);
+                        continue;
+                    } 
+
+                    // primaryTopic, isPrimaryTopicOf link を除外
+                    if(  item.p.value.match(/PrimaryTopic/i ) ) { 
+                        console.log("skip *PrimaryTopic*", item);
+                        continue;
+                    } 
+
+
+
+                    // wikiPage** link でつながるノードをとりあえず除外
+                     if(  item.p.value.includes( "wikiPage" )) { 
+                        // wikiPageRedirects は表示する。
+                        if(  item.p.value.includes( "wikiPageRedirects" )) { 
+                        } else { 
+                            console.log("skip wikiPageWikiLink", item);
+                            continue;
+                        } 
+                    } 
+
+                    // image* や verify* link でつながるノードを除外
+
+                     if( item.p.value.includes( "image" ) ||
+                         item.p.value.includes( "verif" ) ||
+                         item.p.value.includes( "thumbnail" ) ){ 
+                        console.log("skip image", item);
+                        continue;
+                    } 
+
+
+                     if ( link_name.includes( "abstract" ) ) {
+                        // source node に 情報追加
+                        data.abstract =  item.o; 
+                        continue;
+                     } 
+                     if ( link_name.includes("comment" ) ) {
+                        // source node に 情報追加
+                        data.comment =  item.o; 
+                        continue;
+                     } 
+
+                     if ( link_name.includes("rdf:type" ) ) {
+                        // source node に 情報追加
+                        if( data.rdf_type ){
+                            data.rdf_type +=  ", " + item.o.replace( /^.*\//, "");   // url path を除去
+                        } else {
+                            data.rdf_type = item.o.replace( /^.*\//, "");   // url path を除去
+                        } 
+                        continue;
+                     } 
+
+                    
+
+                    // 既存ノードへの link　かチェック
+
+                     var target_id = "";
+
+                     var old_node =  cy.nodes().filter( function(ele){ 
+                         if( ele.data().url == item.o){ return true;} else{ return false; }} );
+
+                     console.log("old_node=", old_node) 
+                     console.log("old_node.length =", old_node.length );
+                     if(old_node.length > 0){
+                        console.log("existing node");
+                        target_id = old_node[0].data().id;
+                        console.log("target_id=", target_id);
+
+                     } else { 
+                        ncount += 1;
+                        target_id = 'n' + ncount.toString(); 
+                    }
+
+                    var node_name = item.o; 
+                    // value: "http://cy.dbpedia.org/resource/Pectin" なら Pectin だけ取る
+                    var tmp = item.o.value.match( "/([^/]+)$"); 
+                    if( tmp ) {
+                        node_name = tmp[1];
+                    }
+
+               
+                    var node_class = "node_class_string";
+                    if( item.o.value.includes("http" ) ){ 
+                        if( item.o.value.includes("dbpedia" ) ){
+                            node_class = "node_class_dbpedia";
+                        } else if( item.o.value.includes("wikipedia" ) ){ 
+                            node_class = "node_class_wikipedia";
+                        } else {
+                            console.log("unknown http");
+                            node_class = "node_class_wikipedia";
+                        }  
+                    } 
+
+                    if( old_node.length == 0 ){     // 新規ノード
+                        if( link_name.includes("subject") ){
+                            // link_name: subject のノードは subject エリアに配置する。
+                            new_nodes.push(
+                                { group: 'nodes', data: { id    : 'n' + ncount.toString(), 
+                                                          'name': node_name, 
+                                                           url  : item.o , 
+                                                           parent: parent_id    // ●
+                                                        },
+                                              // classes:'test'   
+                                              classes:node_class   
+                                        }
+                                );
+
+                        } else { 
+                            new_nodes.push(
+                                { group: 'nodes', data: { id    : 'n' + ncount.toString(), 
+                                                          'name': node_name, 
+                                                           url  : item.o 
+                                                        },
+                                              // classes:'test'   
+                                              classes:node_class   
+                                }
+                            );
+                        }
+                    }
+
+                
+                    // if( item.rev.includes("subject") )
+                    if( link_name.includes("subject") && old_node.length == 0 && rev_subject_link.length > 0 ){
+                        // subject エリアがあり、
+                        // subject エリアに新規に配置したノードへの edge は描かない
+                    }  else { 
+                        ecount += 1;       
+
+                        // check edge direction 
+                        var source_node = source_id;
+                        var target_node = target_id;
+                        if( item.rel == "" ){
+                            source_node = target_id;
+                            target_node = source_id;
+                        } 
+
+                        new_edges.push(
+                            { group: 'edges', data: { id   : 'e' + ecount.toString(), 
+                                                     'name': link_name,
+                                                      source: source_node,    // source_id
+                                                      target: target_node     // target_id
+                                                    },
+                                          classes:'test'   }
+                            );
+                    }
+                 }
+                  console.log( "new_nodes=", new_nodes );
+                  console.log( "new_edges=", new_edges );
+
+                  cy.add( new_nodes );
+                  cy.add( new_edges );
+                  //setStyles( new_nodes, new_edges );
+                  setStyles( cy.nodes(), cy.edges() );
+
+                  global_ncount = ncount;
+                  global_ecount = ecount;
+
+
+              })
+              .catch(error => {
+                console.error(error);
+              })
+              .finally(() => {
+                // skip
+              });
+
+
+        },
+        disabled: false
+      },
+
+
+    //wikipedia で関連ノードを検索・追加
+      {
+        id: 'wiki_expand',
+        content: 'wiki expand',
+        tooltipText: 'wiki expand',
+        selector: 'node',
+        onClickFunction: function (event) {
+            console.log('expand element');
+            var target = event.target || event.cyTarget;
+            console.log(target) ;
+            console.log(target.id() ) ;
+            console.log(target.data()  ) ;
+
+            var source_id = target.data().id;
+            console.log( "source_id=", source_id );
+
+            // console.log( cy.nodes() ) ;
+            // var ncount = cy.nodes().length ;
+            var ncount = global_ncount;
+            //console.log("ncount:", ncount); 
+
+            // console.log( cy.edges() ) ;
+            //var ecount = cy.edges().length ;
+            var ecount = global_ecount;
+            //console.log("ecount:", ecount);
+
+            // rename target -> source_ele
+            var source_ele = target;
+
+            var data = target.data();
+            var name = data.name;
+            //var query = "http://www7353uo.sakura.ne.jp:8084/dbpedia?word=" + name; 
+
+            var url = "http://ja.dbpedia.org/resource/" + name;
+            var query =  "http://ja.dbpedia.org/sparql?format=json&query=" + 
+              "select distinct * where { <" + url + "> ?p ?o .  } LIMIT 300 ";
+            
+            console.log("query=", query);
+            axios.get(query)
+              .then(response => {
+                 var items =  response.data.results.bindings;
+                 console.log(JSON.stringify(response.data));
+                 var new_nodes = [];
+                 var new_edges = []; 
+
+                 ncount += 1;
+                 var parent_id  = 'n' + ncount.toString(); 
+                 var parent_type  = 'g' + ncount.toString(); 
+
+
+                // 関連語ノードをレイアウトするエリアの作成
+
+                 new_nodes.push(
+                            { group: 'nodes', data: { id    : parent_id, 
+                                                      type  : parent_type,
+                                                      'name': data.name + "の関連語", 
+                                                       url  : ""
+                                                    },
+                                          // classes:'test'   
+                                          classes:node_class  
+                                }
+
+                            );
+                  ecount += 1;
+                  new_edges.push(
+                    { group: 'edges', data: { id   : 'e' + ecount.toString(), 
+                                             'name': data.name + "の関連語", 
+                                              source: source_id, 
+                                              target: parent_id 
+                                            },
+                                  classes:'test'   }
+                    );
+
+                 for( item of items){
+                    // console.log("checking ", item); 
+
+                    if( typeof item.p == "string"){ 
+                      item.p.value = item.p ; 
+                    }
+                    
+                    // lengthy prefix を削除 
+                    item.p.value = item.p.value.replace("dbpedia-owl:", "");
+                    item.p.value = item.p.value.replace("dcterms:", "");
+            
+                    var link_name = item.p.value;
+                    var tmp = item.p.value.match( "/([^/]+)$");    
+                    if( tmp ) {
+                        link_name = tmp[1];
+                    }
+
+
+                    // 多言語表記は除外
+                    if(( item.p.value.includes( "#sameAs") || item.p.value.includes( "#label") ) || 
+                         item.o.value.includes( "dbpedia.org") && 
+                        ! (  item.o.value.includes( "ja.dbpedia.org") || 
+                             item.o.value.includes( "/dbpedia.org" ))) {   // dbpedia.org の sameAs は残す。
+                        console.log("skip non-japanese ", item);
+                        continue;
+                    } 
+
+                    if(  item.o.value.includes("Template") || 
+                         item.o.value.includes("ファイル:")   )  { 
+                        continue;
+                    } 
+
+                    // 数字ノードを除外
+                    if(  item.o.value.match(/^[\d\.]+$/)  ){ 
+                        console.log("skip number ", item);
+                        continue;
+                    } 
+
+                    // oldid を除外
+                    if(  item.o.value.includes("oldid=") ) { 
+                        console.log("skip oldid", item);
+                        continue;
+                    } 
+
+                    // 画像 を除外
+                    if(  item.o.value.match(/\.(svg|jpg|png)$/i ) ){ 
+                        console.log("skip image", item);
+                        continue;
+                    } 
+
+                    // wikiPage** link 以外でつながるノードを除外
+                     if(  item.p.value.includes( "wikiPage" )) { 
+                        if(  item.p.value.includes( "wikiPageRedirects" )) { 
+                            console.log("skip wikiPageRedirects", item);
+                            continue;
+                        }
+                     } 
+                     
+                     if ( link_name.includes("rdf:type" ) ) {
+                        // source node に 情報追加
+                        if( data.rdf_type ){
+                            data.rdf_type +=  ", " + item.o.replace( /^.*\//, "");   // url path を除去
+                        } else {
+                            data.rdf_type = item.o.replace( /^.*\//, "");   // url path を除去
+                        } 
+                        continue;
+                     } 
+
+
+                    // 既存ノードへの link　かチェック
+
+                     var target_id = "";
+
+                     var old_node =  cy.nodes().filter( function(ele){ 
+                         if( ele.data().url == item.o){ return true;} else{ return false; }} );
+
+                     console.log("old_node=", old_node) 
+                     console.log("old_node.length =", old_node.length );
+                     if(old_node.length > 0){
+                        console.log("existing node");
+                        target_id = old_node[0].data().id;
+                        console.log("target_id=", target_id);
+
+                     } else { 
+                        ncount += 1;
+                        target_id = 'n' + ncount.toString(); 
+                    }
+
+                    var node_name = item.o; 
+                    // value: "http://cy.dbpedia.org/resource/Pectin" なら Pectin だけ取る
+                    var tmp = item.o.value.match( "/([^/]+)$"); 
+                    if( tmp ) {
+                        node_name = tmp[1];
+                    }
+
+               
+                     if ( link_name.includes( "abstract" ) ) {
+                         node_name = "abstract";
+                     } 
+                     if ( link_name.includes("comment" ) ) {
+                         node_name = "comment";
+                     } 
+
+
+
+                    var node_class = "node_class_string";
+                    if( item.o.value.includes("http" ) ){ 
+                        if( item.o.value.includes("dbpedia" ) ){
+                            node_class = "node_class_dbpedia";
+                        } else if( item.o.value.includes("wikipedia" ) ){ 
+                            node_class = "node_class_wikipedia";
+                        } else {
+                            console.log("unknown http");
+                            node_class = "node_class_wikipedia";
+                        }  
+                    } 
+
+
+                    if( old_node.length >0 ){     // 既存ノードへの新規リンクの追加
+
+                        // wikiLink は弱い関係性なので、
+                        // source_id からそのノードに既に別の edge　でlink　されているときはlink を追加しない
+                    
+                        var old_link = source_ele.neighborhood().filter( function(ele){ 
+                            if( ele.data().id == target_id){ return true;} else{ return false; }} );
+                        if( old_link.length > 0 ){
+                            console.log("link already exists");
+                            continue;
+                        } 
+
+                        ecount += 1;       
+
+                        // check edge direction 
+                        var source_node = source_id;
+                        var target_node = target_id;
+                        if( item.rel == "" ){
+                            source_node = target_id;
+                            target_node = source_id;
+                        } 
+
+                        new_edges.push(
+                            { group: 'edges', data: { id   : 'e' + ecount.toString(), 
+                                                     'name': link_name,
+                                                      source: source_node,  // source_id, 
+                                                      target: target_node    // target_id
+                                                    },
+                                          classes:'test'   }
+                            );
+
+                    } else {    // new node
+
+                        new_nodes.push(
+                            { group: 'nodes', data: { id    : 'n' + ncount.toString(), 
+                                                      'name': node_name, 
+                                                       url  : item.o , 
+                                                       parent: parent_id    // ●
+                                                    },
+                                          // classes:'test'   
+                                          classes:node_class   
+                                    }
+                            );
+
+                    } 
+
+                 }
+
+
+
+
+
+                  console.log( "new_nodes=", new_nodes );
+                  console.log( "new_edges=", new_edges );
+
+                  cy.add( new_nodes );
+                  cy.add( new_edges );
+                  //setStyles( new_nodes, new_edges );
+                  setStyles( cy.nodes(), cy.edges() );
+
+                  // 追加したノードを selected にしてレイアウトする 
+
+                  var nodes_to_layout = cy.nodes().filter( function(ele){
+                      for  ( node of new_nodes){
+                         if ( ele.data().id == node.data.id ){ 
+                            return true;
+                         }
+                      }
+                      return false; } );
+                  nodes_to_layout.select();
+
+                  // 元のノードは unselect にする。
+                  target.unselect();
+
+                  CytLayout.setLeyout(cy, $("#IdLayout").val());
+   
+                  global_ncount = ncount; 
+                  global_ecount = ecount; 
+
+              })
+              .catch(error => {
+                console.error(error);
+              })
+              .finally(() => {
+                // skip
+              });
+
+
+        },
+        disabled: false
+      },
+
+    //2 ノード間の関連性を検索
+      {
+        id: 'find_relation',
+        content: 'find relation',
+        tooltipText: 'ノード間の関連',
+        selector: 'node',
+        onClickFunction: function (event) {
+            console.log('find_relation between two nodes');
+            var target = event.target || event.cyTarget;
+            console.log(target) ;
+            console.log(target.id() ) ;
+            console.log(target.data()  ) ;
+         var nodes =  cy.nodes().filter( function(ele){ 
+               if( ele.selected() ){ return true;} else{ return false; }} );
+        if (nodes.length != 2 ){
+            console.log("selected nodes != 2");
+            return;
+        }
+
+        var node_a = nodes[0];
+        var node_b = nodes[1];
+        var url_a = "<" + node_a.data().url + ">" ;
+        var url_b = "<" + node_b.data().url + ">" ;
+        var source_id_a = node_a.data().id;
+        var source_id_b = node_b.data().id;
+        console.log("url_a=", url_a, "url_b=", url_b );
+
+
+        // console.log( cy.nodes() ) ;
+        // var ncount = cy.nodes().length ;
+        var ncount = global_ncount;
+        //console.log("ncount:", ncount); 
+
+        // console.log( cy.edges() ) ;
+        //var ecount = cy.edges().length ;
+        var ecount = global_ecount;
+        //console.log("ecount:", ecount);
+
+
+        // 2 ノード間の rel を探索する。
+
+        var query =  "http://ja.dbpedia.org/sparql?format=json&query=" + 
+            "select distinct * where {  " + url_a + " ?p " + url_b +  ". } "; 
+        console.log("query=", query);
+        axios.get(query)
+          .then(response => {
+             var items =  response.data.results.bindings; 
+             console.log(JSON.stringify(response.data));
+             // var items =  response.data.results.bindings; 
+
+             var new_edges = []; 
+
+             for( item of items){
+
+                // console.log("checking ", item); 
+
+           
+                var link_name = item.p;
+                var tmp = item.p.value.match( "/([^/]+)$");    
+                if( tmp ) {
+                    link_name = tmp[1];
+                }
+
+                ecount += 1;       
+                new_edges.push(
+                    { group: 'edges', data: { id   : 'e' + ecount.toString(), 
+                                             'name': link_name1,
+                                              source: source_id_a, 
+                                              target: source_id_b
+                                            },
+                                  classes:'test'   }
+                    );
+
+             }
+
+
+              console.log( "new_edges=", new_edges );
+              cy.add( new_edges );
+              //setStyles( new_nodes, new_edges );
+              //setStyles( cy.nodes(), cy.edges() );
+
+          })
+          .catch(error => {
+            console.error(error);
+          })
+          .finally(() => {
+            // skip
+          });
+
+
+
+
+        ////////////
+
+        // １ノードを介した関係を探索する。
+
+        var query =  "http://ja.dbpedia.org/sparql?format=json&query=" + 
+            "select distinct * where {  " + url_a + " ?p ?o . ?o ?p2 " + url_b +  ". } "; 
+        console.log("query=", query);
+        axios.get(query)
+          .then(response => {
+             var items =  response.data.results.bindings; 
+             console.log(JSON.stringify(response.data));
+             // var items =  response.data.results.bindings; 
+             var new_nodes = [];
+             var new_edges = []; 
+
+
+             for( item of items){
+
+                // console.log("checking ", item); 
+
+                // 既存ノードへの link　かチェック
+
+                 var target_id = "";
+
+                 var old_node =  cy.nodes().filter( function(ele){ 
+                     if( ele.data().url == item.o.value){ return true;} else{ return false; }} );
+
+                 console.log("old_node=", old_node) 
+                 console.log("old_node.length =", old_node.length );
+                 if(old_node.length > 0){
+                    console.log("existing node");
+                    target_id = old_node[0].data().id;
+                    console.log("target_id=", target_id);
+
+                 } else { 
+                    ncount += 1;
+                    target_id = 'n' + ncount.toString(); 
+                }
+
+                var node_name = item.o.vlaue; 
+                // value: "http://cy.dbpedia.org/resource/Pectin" なら Pectin だけ取る
+                var tmp = item.o.value.match( "/([^/]+)$"); 
+                if( tmp ) {
+                    node_name = tmp[1];
+                }
+
+           
+                var link_name1 = item.p.value;
+                var tmp = item.p.value.match( "/([^/]+)$");    
+                if( tmp ) {
+                    link_name1 = tmp[1];
+                }
+
+                var link_name2 = item.p2.type;
+                    tmp = item.p2.value.match( "/([^/]+)$");    
+                if( tmp ) {
+                    link_name2 = tmp[1];
+                }
+
+
+                var node_class = "node_class_string";
+                if( item.o.value.includes("http" ) ){ 
+                    if( item.o.value.includes("dbpedia" ) ){
+                        node_class = "node_class_dbpedia";
+                    } else if( item.o.value.includes("wikipedia" ) ){ 
+                        node_class = "node_class_wikipedia";
+                    } else {
+                        console.log("unknown http");
+                        node_class = "node_class_wikipedia";
+                    }  
+                } 
+
+
+                if( old_node.length >0 ){     // 既存ノードへの新規リンクの追加
+
+                } else {    // new node
+
+                    new_nodes.push(
+                        { group: 'nodes', data: { id    : target_id, 
+                                                  'name': node_name, 
+                                                   url  : item.o.value , 
+                                                },
+                                      // classes:'test'   
+                                      classes:node_class   
+                            }
+                        );
+
+                } 
+
+                ecount += 1;       
+                new_edges.push(
+                    { group: 'edges', data: { id   : 'e' + ecount.toString(), 
+                                             'name': link_name1,
+                                              source: source_id_a, 
+                                              target: target_id
+                                            },
+                                  classes:'test'   }
+                    );
+
+                ecount += 1;       
+                new_edges.push(
+                    { group: 'edges', data: { id   : 'e' + ecount.toString(), 
+                                             'name': link_name2,
+                                              source: target_id, 
+                                              target: source_id_b
+                                            },
+                                  classes:'test'   }
+                    );
+
+
+             }
+
+
+
+              console.log( "new_nodes=", new_nodes );
+              console.log( "new_edges=", new_edges );
+
+              cy.add( new_nodes );
+              cy.add( new_edges );
+              //setStyles( new_nodes, new_edges );
+              setStyles( cy.nodes(), cy.edges() );
+
+
+              global_ncount = ncount;
+              global_ecount = ecount;
+
+          })
+          .catch(error => {
+            console.error(error);
+          })
+          .finally(() => {
+            // skip
+          });
+
+
+        },
+        disabled: false
+      },
+
+
+    ],
+    // css classes that menu items will have
+    menuItemClasses: [
+      // add class names to this list
+		"test", 
+		"node_class_wikipedia",
+		"node_class_dbpedia",
+		"node_class_string"
+    ],
+    // css classes that context menu will have
+    contextMenuClasses: [
+      // add class names to this list
+		"test", 
+		"node_class_wikipedia",
+		"node_class_dbpedia",
+		"node_class_string"
+    ]
+};
+
+
+      cy.contextMenus(options);
+
+      CytLayout.setLeyout(cy, $("#IdLayout").val());
+
+      // cyのセレクタ"node"でイベントを拾う
+      cy.on("cxttap", "node", function (evt) {
+        console.log("event:cxtap"); // 右クリック
+        setStyles(cy.nodes(), cy.edges());
+        // CytLayout.setLeyout(cy, $("#IdLayout").val());
+      });
+
+      $("#IdLayout").change(function () {
+        console.log("event:change");
+        setStyles(cy.nodes(), cy.edges());
+        CytLayout.setLeyout(cy, $("#IdLayout").val());
+      });
+
+      $("#IdBtnRedraw").click (function () {
+        CytLayout.setLeyout(cy, $("#IdLayout").val());
+      });
+
+      $("#IdBtnLoad").click (function () {
+        var elements = cy.elements();
+        cy.remove(elements);
+        cy.add(eval($("#IdDetail").val()));
+        setStyles(cy.nodes(), cy.edges());
+        //  CytLayout.setLeyout(cy, $("#IdLayout").val());
+
+      });
+
+      $("#IdBtnSave").click (function () {
+
+        //var s = "";
+        var s = "[";
+        var nodes = cy.nodes();
+        nodes.forEach(function (node) {
+          s += JSON.stringify(node.json());
+          s += ",\n";
+        });
+
+        var edges = cy.edges();
+        edges.forEach(function (edge) {
+          s += JSON.stringify(edge.json());
+          s += ",\n";
+        });
+        s += "]";
+        $("#IdDetail").val(s);
+
+
+
+      });
+
+
+      $("#Id_spacingFactor").change(function () {
+        CytLayout.setLeyout(cy, $("#IdLayout").val());
+      });
+
+      $("#Id_default_spacingFactor").click (function () {
+        // $("#Id_spacingFactor").val() = 0.5;
+        document.getElementById( "Id_spacingFactor")="0.5" ;
+        CytLayout.setLeyout(cy, $("#IdLayout").val());
+      });
+
+
+      $("#IdBtnSearch").click(function () {
+        var search_name = $("#IdSearch").val();
+        var search_nodes =  cy.nodes().filter( function(ele){ 
+                         if( ele.data().name.includes(search_name) ){ return true;} else { return false;}} );
+        console.log("search_nodes=", search_nodes);
+        search_nodes.select();
+//        for(var search_node in search_nodes ){
+//            search_node.css( 'background-color', 'SteelBlue');
+//        } 
+        CytLayout.setLeyout(cy, $("#IdLayout").val());
+
+      });
+
+
+      $("#IdBtnRead").click(function () {
+
+
+
+
+        var new_name = $("#IdElements").val();
+
+
+
+        // wikipedia で検索
+
+        var url = "http://ja.dbpedia.org/resource/" + new_name; 
+        var query =  "http://ja.dbpedia.org/sparql?format=json&query=" + 
+              "select distinct * where { <" + url + "> ?p ?o .  } LIMIT 300 ";
+        //var query = "http://www7353uo.sakura.ne.jp:8084/dbpedia?word=" + new_name; 
+
+
+        console.log(query);
+        var new_nodes = [];
+        axios.get(query)
+              .then(response => {
+                 console.log(JSON.stringify(response.data));
+                 var items =  response.data.results.bindings; 
+                 console.log( "hit:", items.length);
+                 if( items.length > 0 ){
+                      // 新規ノードの追加
+                      // var ncount = cy.nodes().length ;
+                      var ncount = global_ncount;
+                      ncount += 1;
+                      var new_node = 
+                            { group: 'nodes', data: { id    : 'n' + ncount.toString(), 
+                                                      'name': new_name,
+                                                      'url' : url
+                                                    },
+                                          // classes:'test'   
+                                          classes:'node_class_dbpedia'   
+                            }; 
+                    console.log("new_node:", new_node);
+                    cy.add( new_node );
+                    setStyles( cy.nodes(), cy.edges() );
+                    global_ncount = ncount;
+
+                  } 
+              })
+              .catch(error => {
+                console.error(error);
+              })
+              .finally(() => {
+                // skip
+              });
+
+
+      });
+
+      /*
+      $("#IdBtnSave").click(function () {
+        var s = "";
+        var nodes = cy.nodes();
+        nodes.forEach(function (node) {
+          s += JSON.stringify(node.json());
+          s += "\n";
+        });
+        $("#IdDetail").val(s);
+      });
+      */
+
+    });
+  </script>
+</head>
+
+<body>
+  <h1>wikidata viewer</h1>
+  <table border="1">
+    <tr>
+          <!--
+      <td>
+        <label for="IdLayout">Layout:</label>
+        <select name="NmLayout" id="IdLayout">
+          <option value="fcose" selected>fcose</option>
+          <option value="grid">grid</option>
+          <option value="random">random</option>
+          <option value="circle">circle</option>
+          <option value="concentric">concentric</option>
+          <option value="breadthfirst">breadthfirst</option>
+          <option value="cose">cose</option>
+        </select>
+      </td>
+            -->
+
+      <td>
+        <table border="1">
+            <tr>
+                <td>layout </td>
+                <td>
+                    <select name="NmLayout" id="IdLayout">
+                      <option value="fcose" >fcose</option>
+                      <option value="grid" selected>grid</option>
+                      <option value="random">random</option>
+                      <option value="circle">circle</option>
+                      <option value="concentric">concentric</option>
+                      <option value="breadthfirst">breadthfirst</option>
+                      <option value="cose">cose</option>
+                    </select>
+                    <button id="IdBtnRedraw">再描画</button>
+                    <button id="IdBtnLoad">読込</button>
+                    <button id="IdBtnSave">保存</button>
+                </td>
+            </tr>
+            <tr>
+                <td>padding</td>
+                <td> <input name="NmPadding" id="Id_padding"  value="30" ></td>
+            </tr>
+            <tr>
+                <td>spacingFactor</td>
+                <td> 
+                    <!--
+                    <input name="NmSpacing" id="Id_spacingFactor" value="0.5" > 
+                    -->
+
+                    <input name="NmSpacing"  id="Id_spacingFactor" 
+                        type="range" value="0.5" min="0.1" max="2" step="0.1" >
+                    <button id="Id_default_spacingFactor">default</button>
+
+
+            </tr>
+        </table>
+      </td>
+
+    <!--
+      <td>
+        <table>
+          <tr>
+              <td>a</td>
+              <td>b</td>
+              <td>c</td>
+          </tr>
+        </table>
+      </td>
+    -->
+
+      <td>
+        <table border="1"> 
+          <tr>
+              <td>        
+                <button id="IdBtnRead">ノード追加</button>
+                <textarea name="NmElements" id="IdElements" cols="30" rows="1">ペクチン</textarea>
+              </td>
+          </tr>
+          <tr>
+              <td>        
+                <button id="IdBtnSearch">ノード検索</button>
+                <textarea name="NmSearch" id="IdSearch" cols="30" rows="1"></textarea>
+              </td>
+          </tr>
+        </table>
+      </td>
+      <td id="IdDetails">
+        詳細
+        <textarea name="NmDetail" id="IdDetail" cols="60" rows="5"></textarea>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="3">
+        <div id="IdCytoscape"></div>
+      </td>
+    </tr>
+  </table>
+</body>
+
+</html>
